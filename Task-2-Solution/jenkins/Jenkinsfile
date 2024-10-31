@@ -26,13 +26,38 @@ pipeline {
         stage('Create AWS Resources') {
             steps {
                 sh """
-                    cd Task-1-Solution/terraform
+                    cd Task-2-Solution/terraform
                     terraform workspace select ${params.ENVIRONMENT} || terraform workspace new ${params.ENVIRONMENT}
                     terraform init
                     terraform apply -var='ec2_type=${params.INSTANCE_TYPE}' \
                                     -var='num_of_instance=${INSTANCE_COUNT_INT}' \
                                     -var='ec2_key=${ENVIRONMENT}' \
                                     -auto-approve
+                """
+            }
+        }
+
+        stage('Wait the instance') {
+            steps {
+                script {
+                    echo 'Waiting for the instance'
+                    id = sh(script: 'aws ec2 describe-instances --filters Name=tag-value,Values="${ENVIRONMENT}_server" Name=instance-state-name,Values=running --query Reservations[*].Instances[*].[InstanceId] --output text',  returnStdout:true).trim()
+                    sh 'aws ec2 wait instance-status-ok --instance-ids $id'
+                }
+            }
+        }
+
+        
+        stage('Configure AWS Instance') {
+            steps {
+                echo 'Configure AWS Instance'
+                sh 'pwd'
+                sh 'ls -l'
+                sh 'ansible --version'
+                sh 'ansible-inventory -i ./Task-2-Solution/ansible/inventory_aws_ec2.yml --graph'
+                sh """
+                    cd Task-2-Solution/ansible
+                    ansible-playbook -i inventory_aws_ec2.yml --private-key=${WORKSPACE}/${ENVIRONMENT} ${ENVIRONMENT}.yml -vvv
                 """
             }
         }
@@ -54,7 +79,7 @@ pipeline {
                 """
             echo 'Delete AWS Resources'            
                 sh """
-                cd Task-1-Solution/terraform
+                cd Task-2-Solution/terraform
                 terraform destroy --auto-approve
                 """
         }
@@ -67,7 +92,7 @@ pipeline {
                 """
             echo 'Delete AWS Resources'            
                 sh """
-                cd Task-1-Solution/terraform
+                cd Task-2-Solution/terraform
                 terraform destroy --auto-approve
                 """
         }
